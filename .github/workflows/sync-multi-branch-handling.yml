@@ -1,4 +1,4 @@
-name: Manual Sync to Client Repo
+name: Manual multi-branch Sync to Client Repo
 
 on:
   workflow_dispatch:
