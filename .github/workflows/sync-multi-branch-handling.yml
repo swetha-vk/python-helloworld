@@ -11,7 +11,7 @@ on:
         options:
           - main
           - dev
-          - test
+          - uat
           - prod
       target_branch:
         description: "Target branch in client repo (leave empty to use same as source)"
