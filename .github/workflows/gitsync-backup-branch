@@ -1,0 +1,73 @@
+name: Forcesync with branch backup
+
+on:
+  workflow_dispatch:
+
+jobs:
+  force-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout company repo main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Ensure PAT is present
+        env:
+          TEST_PAT: ${{ secrets.TEST_PAT }}
+        run: |
+          if [ -z "$TEST_PAT" ]; then
+            echo "TEST_PAT secret is not set. Please add it in repo settings."
+            exit 1
+          fi
+
+      - name: Prepare client remote & remove Actions auth header
+        env:
+          TEST_PAT: ${{ secrets.TEST_PAT }}
+        run: |
+          # Make sure Actions bot header doesn't override our PAT
+          git config --unset-all http.https://github.com/.extraheader || true
+
+          # Remove any existing remote to avoid duplicates
+          git remote remove client || true
+
+          # Add client remote using username:PAT so pushes are authenticated
+          git remote add client https://$GITHUB_ACTOR:$TEST_PAT@github.com/CentellaAI/test.git
+
+          echo "Remotes configured:"
+          git remote -v
+
+      - name: Fetch current client/main (if exists)
+        run: |
+          # Fetch client main into a local remote ref (may fail if remote is empty)
+          git fetch client main:refs/remotes/client/main || true
+          if git show-ref --verify --quiet refs/remotes/client/main; then
+            echo "client/main found."
+          else
+            echo "client/main not found (remote may be empty)."
+          fi
+
+      - name: Backup client/main to client/main-backup-<run-id>
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          # If client/main exists, push it to a backup branch before overwrite
+          if git show-ref --verify --quiet refs/remotes/client/main; then
+            BACKUP_BRANCH="main-backup-${RUN_ID}"
+            echo "Creating backup branch on client: ${BACKUP_BRANCH}"
+            # push the fetched client/main ref to client as new backup branch
+            git push client refs/remotes/client/main:refs/heads/${BACKUP_BRANCH}
+            echo "Backup created: client/${BACKUP_BRANCH}"
+          else
+            echo "No client/main to backup."
+          fi
+
+      - name: Force push company main -> client main
+        run: |
+          echo "Force-pushing company main -> client main (this will overwrite remote main)"
+          git push client refs/heads/main:refs/heads/main --force
+
+      - name: Confirm result
+        run: |
+          echo "Done. If the push succeeded you'll see the commit on client/main."
